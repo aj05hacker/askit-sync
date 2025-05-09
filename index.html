@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync Data</title>
+</head>
+<body>
+    <h1>Sync Data to Marks Collection</h1>
+    <button onclick="syncData()">Sync Data</button>
+
+    <script type="module">
+        // Firebase SDK import
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getFirestore, collection, getDocs, setDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+        // Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDPs_ETDj1ja8yVEOIPDzsQfqkfOFh9sKA",
+            authDomain: "mamcet-ai.firebaseapp.com",
+            databaseURL: "https://mamcet-ai-default-rtdb.firebaseio.com",
+            projectId: "mamcet-ai",
+            storageBucket: "mamcet-ai.firebasestorage.app",
+            messagingSenderId: "651882308996",
+            appId: "1:651882308996:web:c19d4b0eb0591392cfe9d1"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        async function syncData() {
+            const yearsRef = collection(db, "academic_years");
+
+            // Get all years from academic_years
+            const yearsSnapshot = await getDocs(yearsRef);
+            for (const yearDoc of yearsSnapshot.docs) {
+                const yearId = yearDoc.id;
+                const departmentsRef = collection(yearDoc.ref, "departments");
+
+                // Get departments within the year
+                const departmentsSnapshot = await getDocs(departmentsRef);
+                for (const deptDoc of departmentsSnapshot.docs) {
+                    const deptId = deptDoc.id;
+                    const yearsRef = collection(deptDoc.ref, "years");
+
+                    // Get years within the department
+                    const yearsSnapshot = await getDocs(yearsRef);
+                    for (const yearLevelDoc of yearsSnapshot.docs) {
+                        const yearLevelId = yearLevelDoc.id;
+                        const semestersRef = collection(yearLevelDoc.ref, "semesters");
+
+                        // Get semesters within the year
+                        const semestersSnapshot = await getDocs(semestersRef);
+                        for (const semDoc of semestersSnapshot.docs) {
+                            const semId = semDoc.id;
+                            const studentsRef = collection(semDoc.ref, "students");
+
+                            // Get students in the semester
+                            const studentsSnapshot = await getDocs(studentsRef);
+                            for (const studentDoc of studentsSnapshot.docs) {
+                                const studentData = studentDoc.data();
+                                const regNumber = studentData.regNumber;
+
+                                // Get exams for the semester
+                                const examsRef = collection(semDoc.ref, "exams");
+                                const examsSnapshot = await getDocs(examsRef);
+                                for (const examDoc of examsSnapshot.docs) {
+                                    const examType = examDoc.id;
+                                    const subjects = examDoc.data().subjects;
+
+                                    // Fetch marks for the student
+                                    const marksRef = collection(examDoc.ref, "marks");
+                                    const marksSnapshot = await getDocs(marksRef);
+                                    const marks = marksSnapshot.docs.reduce((acc, markDoc) => {
+                                        const markData = markDoc.data();
+                                        const subject = markData.subject;
+                                        const score = markData.marks;
+                                        acc[subject] = score;
+                                        return acc;
+                                    }, {});
+
+                                    // Now, save to marks collection in the required format
+                                    const markData = {
+                                        academicYear: yearId,
+                                        createdAt: new Date(),
+                                        department: deptId,
+                                        exam: examType,
+                                        marks,
+                                        regNumber,
+                                        semester: semId,
+                                        studentName: studentData.name,
+                                        subject: subjects.join(', '),
+                                        year: yearLevelId
+                                    };
+
+                                    // Save the data to marks collection
+                                    await setDoc(doc(db, "marks", regNumber), markData);
+                                    console.log(`Data synced for ${studentData.name} in ${examType}`);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
