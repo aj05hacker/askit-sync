@@ -1,113 +1,77 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sync Data</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebase Data Sync</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"></script>
 </head>
 <body>
-    <h1>Sync Data to Marks Collection</h1>
-    <button id="syncButton">Sync Data</button>
+  <h1>Firebase Data Sync</h1>
+  <button onclick="fetchData()">Fetch Data from Firebase</button>
+  <button onclick="syncData()">Sync Data to Marks Collection</button>
+  <p id="status"></p>
 
-    <script type="module">
-        // Firebase SDK import
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getFirestore, collection, getDocs, setDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  <script>
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyDPs_ETDj1ja8yVEOIPDzsQfqkfOFh9sKA",
+      authDomain: "mamcet-ai.firebaseapp.com",
+      projectId: "mamcet-ai",
+      storageBucket: "mamcet-ai.appspot.com",
+      messagingSenderId: "651882308996",
+      appId: "1:651882308996:web:c19d4b0eb0591392cfe9d1"
+    };
 
-        // Firebase config
-        const firebaseConfig = {
-            apiKey: "AIzaSyDPs_ETDj1ja8yVEOIPDzsQfqkfOFh9sKA",
-            authDomain: "mamcet-ai.firebaseapp.com",
-            databaseURL: "https://mamcet-ai-default-rtdb.firebaseio.com",
-            projectId: "mamcet-ai",
-            storageBucket: "mamcet-ai.firebasestorage.app",
-            messagingSenderId: "651882308996",
-            appId: "1:651882308996:web:c19d4b0eb0591392cfe9d1"
-        };
+    // Initialize Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore(app);
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+    // Fetch data from the 'academic_years' collection
+    async function fetchData() {
+      console.log("Fetching data...");
+      try {
+        const snapshot = await db.collection('academic_years').get();
+        console.log("Fetched data:", snapshot.size);
+        
+        snapshot.forEach(doc => {
+          console.log(doc.id, doc.data());
+        });
+        
+        document.getElementById("status").textContent = "Data fetched successfully.";
+      } catch (error) {
+        console.error("Error fetching data from Firebase:", error);
+        document.getElementById("status").textContent = "Error fetching data.";
+      }
+    }
 
-        // syncData function
-        async function syncData() {
-            const yearsRef = collection(db, "academic_years");
+    // Sync data from 'academic_years' to 'marks' collection
+    async function syncData() {
+      console.log("Syncing data...");
+      try {
+        const snapshot = await db.collection('academic_years').get();
+        console.log("Fetched academic_years collection:", snapshot.size);
 
-            // Get all years from academic_years
-            const yearsSnapshot = await getDocs(yearsRef);
-            for (const yearDoc of yearsSnapshot.docs) {
-                const yearId = yearDoc.id;
-                const departmentsRef = collection(yearDoc.ref, "departments");
+        snapshot.forEach(async (doc) => {
+          const academicYear = doc.id;
+          const data = doc.data();
+          
+          // Sync the data to 'marks' collection
+          try {
+            await db.collection('marks').doc(academicYear).set(data);
+            console.log(`Successfully synced academic year: ${academicYear}`);
+          } catch (syncError) {
+            console.error(`Error syncing academic year ${academicYear}:`, syncError);
+          }
+        });
 
-                // Get departments within the year
-                const departmentsSnapshot = await getDocs(departmentsRef);
-                for (const deptDoc of departmentsSnapshot.docs) {
-                    const deptId = deptDoc.id;
-                    const yearsRef = collection(deptDoc.ref, "years");
-
-                    // Get years within the department
-                    const yearsSnapshot = await getDocs(yearsRef);
-                    for (const yearLevelDoc of yearsSnapshot.docs) {
-                        const yearLevelId = yearLevelDoc.id;
-                        const semestersRef = collection(yearLevelDoc.ref, "semesters");
-
-                        // Get semesters within the year
-                        const semestersSnapshot = await getDocs(semestersRef);
-                        for (const semDoc of semestersSnapshot.docs) {
-                            const semId = semDoc.id;
-                            const studentsRef = collection(semDoc.ref, "students");
-
-                            // Get students in the semester
-                            const studentsSnapshot = await getDocs(studentsRef);
-                            for (const studentDoc of studentsSnapshot.docs) {
-                                const studentData = studentDoc.data();
-                                const regNumber = studentData.regNumber;
-
-                                // Get exams for the semester
-                                const examsRef = collection(semDoc.ref, "exams");
-                                const examsSnapshot = await getDocs(examsRef);
-                                for (const examDoc of examsSnapshot.docs) {
-                                    const examType = examDoc.id;
-                                    const subjects = examDoc.data().subjects;
-
-                                    // Fetch marks for the student
-                                    const marksRef = collection(examDoc.ref, "marks");
-                                    const marksSnapshot = await getDocs(marksRef);
-                                    const marks = marksSnapshot.docs.reduce((acc, markDoc) => {
-                                        const markData = markDoc.data();
-                                        const subject = markData.subject;
-                                        const score = markData.marks;
-                                        acc[subject] = score;
-                                        return acc;
-                                    }, {});
-
-                                    // Now, save to marks collection in the required format
-                                    const markData = {
-                                        academicYear: yearId,
-                                        createdAt: new Date(),
-                                        department: deptId,
-                                        exam: examType,
-                                        marks,
-                                        regNumber,
-                                        semester: semId,
-                                        studentName: studentData.name,
-                                        subject: subjects.join(', '),
-                                        year: yearLevelId
-                                    };
-
-                                    // Save the data to marks collection
-                                    await setDoc(doc(db, "marks", regNumber), markData);
-                                    console.log(`Data synced for ${studentData.name} in ${examType}`);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Attach the function to the button click
-        document.getElementById("syncButton").addEventListener("click", syncData);
-    </script>
+        document.getElementById("status").textContent = "Data synced successfully to 'marks' collection.";
+      } catch (error) {
+        console.error("Error syncing data:", error);
+        document.getElementById("status").textContent = "Error syncing data.";
+      }
+    }
+  </script>
 </body>
 </html>
